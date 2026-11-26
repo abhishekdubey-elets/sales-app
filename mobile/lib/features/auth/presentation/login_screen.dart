@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -44,6 +45,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _changeServer() async {
+    final saved = await showDialog<String>(context: context, builder: (_) => const ServerDialog());
+    if (saved == null || !mounted) return;
+    setState(() => _error = null);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Server set to $saved')));
   }
 
   @override
@@ -128,13 +136,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               )
                             : const Text('Sign in'),
                       ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Server: ${Env.apiBaseUrl}',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 20),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _submitting ? null : _changeServer,
+                          icon: const Icon(Icons.dns_outlined, size: 18),
+                          label: Text('Server: ${Env.apiBaseUrl}', overflow: TextOverflow.ellipsis),
+                        ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
                         'Accounts are created by your administrator.',
                         textAlign: TextAlign.center,
@@ -148,6 +157,113 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Lets the user point the installed app at a backend (e.g. `http://192.168.1.20:8000`
+/// on the office network, or the production https URL). Checks `/health` before saving.
+class ServerDialog extends StatefulWidget {
+  const ServerDialog({super.key});
+
+  @override
+  State<ServerDialog> createState() => _ServerDialogState();
+}
+
+class _ServerDialogState extends State<ServerDialog> {
+  final _controller = TextEditingController(text: Env.apiBaseUrl);
+  bool _checking = false;
+  String? _error;
+  bool _offerSaveAnyway = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save({bool skipCheck = false}) async {
+    final url = Env.normalizeServerUrl(_controller.text);
+    if (url == null) {
+      setState(() {
+        _error = 'Enter an address like http://192.168.1.20:8000 or https://api.example.com';
+        _offerSaveAnyway = false;
+      });
+      return;
+    }
+    if (!skipCheck) {
+      setState(() {
+        _checking = true;
+        _error = null;
+      });
+      final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 6), receiveTimeout: const Duration(seconds: 6)));
+      try {
+        final res = await dio.get<dynamic>('$url/health');
+        final ok = res.data is Map && (res.data as Map)['database'] == true;
+        if (!ok) throw Exception('unexpected response');
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _checking = false;
+          _error = 'Could not reach an Elets SalesCall server at $url. Check the address, that the phone is on the '
+              'same network, and that the server is running.';
+          _offerSaveAnyway = true;
+        });
+        return;
+      } finally {
+        dio.close(force: true);
+      }
+    }
+    await Env.setServer(url);
+    if (mounted) Navigator.of(context).pop(url);
+  }
+
+  Future<void> _reset() async {
+    await Env.setServer(null);
+    if (mounted) Navigator.of(context).pop(Env.apiBaseUrl);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Server address'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            enabled: !_checking,
+            decoration: const InputDecoration(hintText: 'http://192.168.1.20:8000', prefixIcon: Icon(Icons.dns_outlined)),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Ask your administrator for this address.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+        ],
+      ),
+      actions: [
+        if (Env.isCustomServer)
+          TextButton(onPressed: _checking ? null : _reset, child: const Text('Use default')),
+        if (_offerSaveAnyway)
+          TextButton(onPressed: _checking ? null : () => _save(skipCheck: true), child: const Text('Save anyway')),
+        TextButton(onPressed: _checking ? null : () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _checking ? null : _save,
+          child: _checking
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Connect'),
+        ),
+      ],
     );
   }
 }

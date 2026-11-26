@@ -25,7 +25,7 @@ Everything is passed with `--dart-define`; nothing secret lives in the app (prov
 
 | Define | Default | Notes |
 |---|---|---|
-| `API_BASE_URL` | `http://localhost:8000` | Backend origin, without `/api/v1`. The WebSocket URL is derived from it (`http→ws`, `https→wss`). |
+| `API_BASE_URL` | `http://localhost:8000` | Default backend origin, without `/api/v1`. The WebSocket URL is derived from it (`http→ws`, `https→wss`). Users can change the server on the login screen (**Server: …** → enter address → **Connect**); the choice is saved on the device. |
 | `FCM_ENABLED` | `false` | Turn on Firebase Cloud Messaging after adding the Firebase config files (below). |
 
 ## Run
@@ -49,11 +49,27 @@ flutter run -d emulator-5554 --dart-define=API_BASE_URL=http://10.0.2.2:8010
 Physical phone on the same Wi-Fi: use the computer's LAN IP, e.g. `--dart-define=API_BASE_URL=http://192.168.1.20:8010`,
 and add that origin to the backend's `CORS_ORIGINS` only if you also run the web build.
 
-Debug Android builds allow plain HTTP for local development (`android/app/src/debug/AndroidManifest.xml`).
-Release builds do not: use HTTPS in production. On iOS, local HTTP during development needs an
+Android builds allow plain HTTP so the app can reach a server on the office network
+(`android:usesCleartextTraffic` in `android/app/src/main/AndroidManifest.xml`). Once the API is served over HTTPS,
+set it to `false` in the main manifest. On iOS, local HTTP during development needs an
 `NSAppTransportSecurity` exception in `ios/Runner/Info.plist` (don't ship it).
 
 Sign in with an account from the backend seed (see `backend/.env.example` → `SEED_ADMIN_EMAIL` / `SEED_DEFAULT_PASSWORD`).
+
+## Install on an Android phone
+
+1. Build the APK (or use one handed to you): `flutter build apk --release --dart-define=API_BASE_URL=http://<server>:8000`.
+   The file is `build/app/outputs/flutter-apk/app-release.apk`.
+2. Copy it to the phone (USB, Drive, WhatsApp to yourself, …) and open it. Android asks once to allow installs from
+   that app ("Install unknown apps").
+3. Start the backend so the phone can reach it: on the server, run uvicorn with `--host 0.0.0.0`, and allow the port
+   through the firewall. The phone must be on the same network (or use a public https URL).
+4. Open **Elets SalesCall AI**, tap **Server: …** on the sign-in screen if the address needs changing, then sign in.
+
+The release APK is signed with Flutter's debug key, which is fine for installing directly. For the Play Store, create
+an upload keystore and configure `signingConfigs` in `android/app/build.gradle.kts`.
+
+iOS builds need a Mac with Xcode and an Apple Developer account (`flutter build ipa`).
 
 ## Build
 
@@ -99,7 +115,7 @@ StatCard / StatusChip / dialer keypad widgets, and the role-based route guard.
 
 In-app notifications already arrive live over the WebSocket. FCM adds pushes while the app is in the background.
 
-1. Create a Firebase project and add Android (`in.elets.elets_salescall_ai`) and iOS apps.
+1. Create a Firebase project and add Android (`com.elets.salescallai`) and iOS apps.
 2. Easiest: `dart pub global activate flutterfire_cli` then `flutterfire configure` in this folder.
    Otherwise put `google-services.json` in `android/app/` and `GoogleService-Info.plist` in `ios/Runner/`,
    and apply the Google Services Gradle plugin per the Firebase docs.

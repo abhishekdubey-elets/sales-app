@@ -47,6 +47,8 @@ class ApiClient {
   static const _noAuthPaths = ['/auth/login', '/auth/refresh'];
 
   void _onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    // The server can be changed at runtime from the login screen.
+    options.baseUrl = Env.apiRoot;
     final token = tokens.accessToken;
     if (token != null && !_noAuthPaths.contains(options.path)) {
       options.headers['Authorization'] = 'Bearer $token';
@@ -89,6 +91,7 @@ class ApiClient {
       if (refresh == null) {
         completer.complete(false);
       } else {
+        _refreshDio.options.baseUrl = Env.apiRoot;
         final res = await _refreshDio.post<dynamic>('/auth/refresh', data: {'refresh_token': refresh});
         final data = res.data;
         if (data is Map && data['access_token'] != null && data['refresh_token'] != null) {

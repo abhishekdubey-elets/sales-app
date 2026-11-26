@@ -5,6 +5,6 @@
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Debug builds may talk to a local backend over plain HTTP (e.g. http://10.0.2.2:8000).
-         Release builds keep cleartext traffic disabled; use HTTPS in production. -->
+         See the main manifest for release builds; use HTTPS in production. -->
     <application android:usesCleartextTraffic="true"/>
 </manifest>

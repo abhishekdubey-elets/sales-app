@@ -1,4 +1,4 @@
-package `in`.elets.elets_salescall_ai
+package com.elets.salescallai
 
 import io.flutter.embedding.android.FlutterActivity
 
