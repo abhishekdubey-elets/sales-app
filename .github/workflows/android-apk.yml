@@ -63,7 +63,14 @@ jobs:
           cat analyze.txt
 
       - name: Test
-        run: flutter test
+        run: |
+          if ! flutter test --reporter expanded > test.txt 2>&1; then
+            cat test.txt
+            grep -E "\[E\]|Expected:|Actual:|Which:|reason:|EXCEPTION|overflowed|Error:" test.txt \
+              | head -n 25 | while IFS= read -r line; do echo "::error title=test::$line"; done
+            exit 1
+          fi
+          tail -n 3 test.txt
 
       - name: Build APK
         run: |
