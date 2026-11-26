@@ -1,0 +1,26 @@
+# secrets
+.env
+backend/.env
+*service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# flutter
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/ios/Pods/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/ios/Flutter/ephemeral/
+mobile/macos/Flutter/ephemeral/
+*.log
+.DS_Store

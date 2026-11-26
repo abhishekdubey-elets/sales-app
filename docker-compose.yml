@@ -1,0 +1,35 @@
+# Local / single-server deployment: PostgreSQL + API (with background workers in-process).
+#   cp backend/.env.example backend/.env   # then edit secrets and providers
+#   docker compose up -d --build
+#   docker compose exec api python -m app.seed            # first run only
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: elets
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-elets}
+      POSTGRES_DB: elets_salescall
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elets -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://elets:${POSTGRES_PASSWORD:-elets}@db:5432/elets_salescall
+      RUN_WORKERS: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+volumes:
+  pgdata:
