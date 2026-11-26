@@ -7,6 +7,32 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/auth_controller.dart';
 
+/// Which sign-in the user picked. The server refuses an account of the other kind (`wrong_portal`).
+enum SignInPortal {
+  admin(
+    'admin',
+    'Admin',
+    'Continue as Admin',
+    'Team, AI agents, campaigns, reports and settings',
+    Icons.admin_panel_settings_outlined,
+  ),
+  employee(
+    'employee',
+    'Employee',
+    'Continue as Employee',
+    'Sales executives and managers: leads, calls, follow-ups',
+    Icons.badge_outlined,
+  );
+
+  const SignInPortal(this.value, this.label, this.cta, this.description, this.icon);
+
+  final String value;
+  final String label;
+  final String cta;
+  final String description;
+  final IconData icon;
+}
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -18,6 +44,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  SignInPortal? _portal;
   bool _obscure = true;
   bool _submitting = false;
   String? _error;
@@ -29,6 +56,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  void _choose(SignInPortal? portal) => setState(() {
+    _portal = portal;
+    _error = null;
+  });
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
@@ -36,7 +68,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      await ref.read(authControllerProvider.notifier).login(_email.text, _password.text);
+      await ref.read(authControllerProvider.notifier).login(_email.text, _password.text, portal: _portal?.value);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -58,102 +90,185 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final message = ref.watch(authControllerProvider).message;
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _formKey,
-                child: AutofillGroup(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(16)),
-                          child: const Icon(Icons.headset_mic, color: Colors.white, size: 28),
-                        ),
+    final portal = _portal;
+    return PopScope(
+      // System back on the form returns to the Admin / Employee choice.
+      canPop: portal == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _choose(null);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(16)),
+                        child: const Icon(Icons.headset_mic, color: Colors.white, size: 28),
                       ),
-                      const SizedBox(height: 24),
-                      Text('Welcome back', style: theme.textTheme.headlineSmall),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Sign in to Elets SalesCall AI',
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      portal == null ? 'Welcome to Elets SalesCall AI' : '${portal.label} sign in',
+                      style: theme.textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      portal == null
+                          ? 'How are you signing in?'
+                          : 'Use the email and password your administrator gave you.',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 28),
+                    if (message != null && _error == null) _Banner(text: message, color: AppColors.warning),
+                    if (_error != null) _Banner(text: _error!, color: theme.colorScheme.error),
+                    if (portal == null) ...[
+                      for (final option in SignInPortal.values) ...[
+                        _PortalCard(portal: option, onTap: () => _choose(option)),
+                        const SizedBox(height: 12),
+                      ],
+                    ] else
+                      _form(theme, portal),
+                    const SizedBox(height: 20),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: _submitting ? null : _changeServer,
+                        icon: const Icon(Icons.dns_outlined, size: 18),
+                        label: Text('Server: ${Env.apiBaseUrl}', overflow: TextOverflow.ellipsis),
                       ),
-                      const SizedBox(height: 28),
-                      if (message != null && _error == null) _Banner(text: message, color: AppColors.warning),
-                      if (_error != null) _Banner(text: _error!, color: theme.colorScheme.error),
-                      TextFormField(
-                        controller: _email,
-                        keyboardType: TextInputType.emailAddress,
-                        autofillHints: const [AutofillHints.email, AutofillHints.username],
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'Work email',
-                          prefixIcon: Icon(Icons.mail_outline),
-                        ),
-                        validator: (v) {
-                          final value = v?.trim() ?? '';
-                          if (value.isEmpty) return 'Enter your email';
-                          if (!value.contains('@') || !value.contains('.')) return 'Enter a valid email';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _password,
-                        obscureText: _obscure,
-                        autofillHints: const [AutofillHints.password],
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _submit(),
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            tooltip: _obscure ? 'Show password' : 'Hide password',
-                            icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                            onPressed: () => setState(() => _obscure = !_obscure),
-                          ),
-                        ),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _submitting ? null : _submit,
-                        child: _submitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Text('Sign in'),
-                      ),
-                      const SizedBox(height: 20),
-                      Center(
-                        child: TextButton.icon(
-                          onPressed: _submitting ? null : _changeServer,
-                          icon: const Icon(Icons.dns_outlined, size: 18),
-                          label: Text('Server: ${Env.apiBaseUrl}', overflow: TextOverflow.ellipsis),
-                        ),
-                      ),
-                      Text(
-                        'Accounts are created by your administrator.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
+                    ),
+                    Text(
+                      'Each person signs in with their own account, created by your administrator.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _form(ThemeData theme, SignInPortal portal) {
+    return Form(
+      key: _formKey,
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ActionChip(
+                key: const ValueKey('portal-change'),
+                avatar: Icon(portal.icon, size: 18),
+                label: Text('Signing in as ${portal.label} · Change'),
+                onPressed: _submitting ? null : () => _choose(null),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email, AutofillHints.username],
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Work email', prefixIcon: Icon(Icons.mail_outline)),
+              validator: (v) {
+                final value = v?.trim() ?? '';
+                if (value.isEmpty) return 'Enter your email';
+                if (!value.contains('@') || !value.contains('.')) return 'Enter a valid email';
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _password,
+              obscureText: _obscure,
+              autofillHints: const [AutofillHints.password],
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                prefixIcon: const Icon(Icons.lock_outline),
+                suffixIcon: IconButton(
+                  tooltip: _obscure ? 'Show password' : 'Hide password',
+                  icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _submitting ? null : _submit,
+              child: _submitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text('Sign in as ${portal.label}'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PortalCard extends StatelessWidget {
+  const _PortalCard({required this.portal, required this.onTap});
+
+  final SignInPortal portal;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        key: ValueKey('portal-${portal.value}'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: theme.colorScheme.primaryContainer,
+                foregroundColor: theme.colorScheme.onPrimaryContainer,
+                child: Icon(portal.icon),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(portal.cta, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(
+                      portal.description,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
           ),
         ),
       ),

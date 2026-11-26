@@ -132,6 +132,18 @@ class HumanCall {
   };
 }
 
+/// A call the salesperson places from their own phone (no telephony provider): the app opens the
+/// phone's dialer with [dialNumber] and the salesperson reports the result afterwards.
+class DeviceCallStart {
+  const DeviceCallStart({required this.call, required this.dialNumber});
+
+  factory DeviceCallStart.fromJson(Map<String, dynamic> j) =>
+      DeviceCallStart(call: HumanCall.fromJson(j), dialNumber: asString(j['dial_number']));
+
+  final HumanCall call;
+  final String dialNumber;
+}
+
 class TelephonyStatus {
   const TelephonyStatus({
     this.provider,
@@ -154,7 +166,8 @@ class TelephonyStatus {
   final String? provider;
   final bool configured;
 
-  /// `bridge` (provider rings the salesperson's phone) or `voip` (in-app audio).
+  /// `bridge` (provider rings the salesperson's phone), `voip` (in-app audio), or `device`
+  /// (no provider configured: the salesperson calls from their own phone and logs the result).
   final String callMode;
   final bool supportsAiStreaming;
   final bool supportsRecording;

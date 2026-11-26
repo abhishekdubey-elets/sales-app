@@ -27,6 +27,9 @@ class LoginIn(BaseModel):
     email: Email
     password: str = Field(min_length=1, max_length=256)
     device_name: str | None = Field(default=None, max_length=120)
+    # Which sign-in the user chose: "admin" (administrators) or "employee" (managers and sales executives).
+    # Omitted = any role (API clients, older app versions).
+    portal: Literal["admin", "employee"] | None = None
 
 
 class RefreshIn(BaseModel):

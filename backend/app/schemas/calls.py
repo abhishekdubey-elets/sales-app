@@ -38,6 +38,17 @@ class HumanCallOut(BaseModel):
     created_at: datetime
 
 
+class DeviceCallOut(HumanCallOut):
+    """A call to be placed from the salesperson's own phone: the app opens the dialer with `dial_number`."""
+
+    dial_number: str
+
+
+class DeviceResultIn(BaseModel):
+    connected: bool
+    duration_seconds: int = Field(ge=0, le=4 * 3600)
+
+
 class StartCallIn(BaseModel):
     lead_id: uuid.UUID | None = None
     phone_number: str | None = None

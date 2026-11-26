@@ -18,6 +18,8 @@ from app.models import CallNote, CallRecording, Followup, HumanCall, Lead, User
 from app.models.enums import ACTIVE_CALL_STATUSES, FollowupStatus
 from app.schemas.calls import (
     CallNoteOut,
+    DeviceCallOut,
+    DeviceResultIn,
     DispositionIn,
     FollowupCreate,
     FollowupOut,
@@ -53,6 +55,22 @@ async def _out(db: AsyncSession, user: User, call: HumanCall, notes: bool = True
 @router.post("/calls", response_model=HumanCallOut, status_code=201)
 async def start_call(body: StartCallIn, user: User = Depends(require(P.CALLS_MAKE)), db: AsyncSession = Depends(get_db)):
     call = await svc.start_human_call(db, user, lead_id=body.lead_id, phone_number=body.phone_number)
+    return await _out(db, user, call)
+
+
+@router.post("/calls/device", response_model=DeviceCallOut, status_code=201)
+async def start_device_call(body: StartCallIn, user: User = Depends(require(P.CALLS_MAKE)),
+                            db: AsyncSession = Depends(get_db)):
+    """Log a call the salesperson will place from their own phone; returns the number to dial."""
+    call, number = await svc.start_device_call(db, user, lead_id=body.lead_id, phone_number=body.phone_number)
+    return {**(await _out(db, user, call)), "dial_number": number}
+
+
+@router.post("/calls/{call_id}/device-result", response_model=HumanCallOut)
+async def device_result(call_id: uuid.UUID, body: DeviceResultIn, user: User = Depends(require(P.CALLS_MAKE)),
+                        db: AsyncSession = Depends(get_db)):
+    call = await get_visible_human_call(db, user, call_id)
+    await svc.record_device_result(db, user, call, connected=body.connected, duration_seconds=body.duration_seconds)
     return await _out(db, user, call)
 
 

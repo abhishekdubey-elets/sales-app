@@ -36,10 +36,12 @@ def set_provider_override(provider: TelephonyProvider | None) -> None:
 
 def telephony_status() -> dict:
     p = get_provider()
+    configured = bool(p and p.is_configured())
     return {
         "provider": p.name if p else None,
-        "configured": bool(p and p.is_configured()),
-        "call_mode": "bridge",
+        "configured": configured,
+        # Without a provider, salespeople call from their own phone (SIM) and report the result.
+        "call_mode": "bridge" if configured else "device",
         "supports_ai_streaming": bool(p and p.supports_ai_streaming),
         "supports_recording": bool(p and p.supports_recording),
         "supports_inbound": bool(p and p.supports_inbound),

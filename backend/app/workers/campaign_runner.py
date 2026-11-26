@@ -157,7 +157,10 @@ async def sweep_stale_calls(db: AsyncSession, max_age_minutes: int) -> int:
         ))).scalars().unique().all()
         for call in stale:
             call.status = "failed"
-            call.failure_reason = "No final status received from the telephony provider"
+            call.failure_reason = (
+                "Call result was not reported from the phone" if call.provider == "device"
+                else "No final status received from the telephony provider"
+            )
             call.ended_at = utcnow()
             await on_terminal(db, call)
             n += 1

@@ -53,7 +53,7 @@ class OrgSettingsUpdate(BaseModel):
 class TelephonyStatus(BaseModel):
     provider: str | None
     configured: bool
-    call_mode: Literal["bridge", "voip"]
+    call_mode: Literal["bridge", "voip", "device"]
     supports_ai_streaming: bool
     supports_recording: bool
     supports_inbound: bool

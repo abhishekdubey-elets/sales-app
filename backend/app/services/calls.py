@@ -36,6 +36,10 @@ from app.telephony.registry import get_provider
 
 log = logging.getLogger(__name__)
 
+# Calls placed from the salesperson's own phone (SIM) when no telephony provider is configured.
+DEVICE_PROVIDER = "device"
+MAX_DEVICE_CALL_SECONDS = 4 * 3600
+
 
 async def publish_call(db: AsyncSession, call: HumanCall, event: str = "call.status") -> None:
     """Send the call to the salesperson (masked per settings), their manager and admins (full)."""
@@ -52,10 +56,10 @@ async def publish_call(db: AsyncSession, call: HumanCall, event: str = "call.sta
         await hub.publish(others, event, full)
 
 
-async def start_human_call(
-    db: AsyncSession, user: User, *, lead_id: uuid.UUID | None, phone_number: str | None
-) -> HumanCall:
-    org = await get_org_settings(db)
+async def _resolve_target(
+    db: AsyncSession, user: User, lead_id: uuid.UUID | None, phone_number: str | None
+) -> tuple[Lead | None, str, str]:
+    """The lead (if any, and visible to the user), the E.164 number to dial, and its blind index."""
     lead: Lead | None = None
     if lead_id:
         lead = await get_visible_lead(db, user, lead_id)
@@ -69,7 +73,67 @@ async def start_human_call(
             scope_leads(sa.select(Lead).where(sa.or_(Lead.phone_hash == ph, Lead.alternate_phone_hash == ph)), user)
             .limit(1)
         )).scalars().first()
-    ph = phone_hash(number)
+    return lead, number, phone_hash(number)
+
+
+async def start_device_call(
+    db: AsyncSession, user: User, *, lead_id: uuid.UUID | None, phone_number: str | None
+) -> tuple[HumanCall, str]:
+    """Log a call the salesperson places from their own phone (SIM). Used when no telephony provider is
+    configured. Nothing is confirmed by a provider: the record is `provider="device"` and its result is reported
+    by the salesperson afterwards (`record_device_result`). Returns the call and the number to dial."""
+    org = await get_org_settings(db)
+    lead, number, ph = await _resolve_target(db, user, lead_id, phone_number)
+    await compliance.ensure_callable(db, org, phone_e164=number, phone_hash=ph, lead=lead, kind="human")
+    call_id = uuid.uuid4()
+    if lead:
+        await call_locks.acquire_lock(db, lead.id, "human", call_id)
+    call = HumanCall(
+        id=call_id, direction=CallDirection.OUTBOUND, lead_id=lead.id if lead else None,
+        lead_name=lead.full_name if lead else None, phone_number=number, phone_hash=ph, salesperson_id=user.id,
+        salesperson_name=user.full_name, team_id=user.team_id, provider=DEVICE_PROVIDER, status=CallStatus.INITIATED,
+        started_at=utcnow(),
+    )
+    db.add(call)
+    if lead:
+        lead.last_called_at = utcnow()
+    await db.commit()
+    await publish_call(db, call)
+    return call, number
+
+
+
+async def record_device_result(db: AsyncSession, user: User, call: HumanCall, *, connected: bool,
+                               duration_seconds: int) -> HumanCall:
+    """The salesperson reports how a phone (SIM) call went. Only for `provider="device"` calls, once."""
+    if call.provider != DEVICE_PROVIDER:
+        raise AppError(409, "not_device_call", "Only calls made from the phone can be reported manually")
+    if call.salesperson_id != user.id and not is_supervisor(user):
+        raise forbidden("Only the salesperson who made the call can report its result")
+    if call.status not in ACTIVE_CALL_STATUSES:
+        raise AppError(409, "already_reported", "This call's result was already recorded")
+    duration = max(0, min(int(duration_seconds), MAX_DEVICE_CALL_SECONDS))
+    now = utcnow()
+    call.ended_at = now
+    call.duration_seconds = duration
+    if connected:
+        call.status = CallStatus.COMPLETED
+        call.answered_at = call.started_at
+        call.talk_seconds = duration
+    else:
+        call.status = CallStatus.NOT_ANSWERED
+        call.talk_seconds = 0
+    await _on_terminal(db, call)
+    await commit_and_deliver(db)
+    await publish_call(db, call)
+    return call
+
+
+async def start_human_call(
+    db: AsyncSession, user: User, *, lead_id: uuid.UUID | None, phone_number: str | None
+) -> HumanCall:
+    org = await get_org_settings(db)
+    lead, number, ph = await _resolve_target(db, user, lead_id, phone_number)
 
     if not user.calling_number:
         raise AppError(422, "calling_number_required",
@@ -144,7 +208,8 @@ async def apply_human_status(db: AsyncSession, call: HumanCall, upd: StatusUpdat
 async def _on_terminal(db: AsyncSession, call: HumanCall) -> None:
     org = await get_org_settings(db)
     await call_locks.release_lock(db, call.lead_id, call.id)
-    compliance.consume_credits(org, call.talk_seconds or 0)
+    if call.provider != DEVICE_PROVIDER:  # phone (SIM) calls don't use provider credits
+        compliance.consume_credits(org, call.talk_seconds or 0)
     if call.lead_id:
         lead = await db.get(Lead, call.lead_id)
         if lead:

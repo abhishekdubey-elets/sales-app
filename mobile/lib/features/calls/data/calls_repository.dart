@@ -57,6 +57,24 @@ class CallsRepository {
     return HumanCall.fromJson(data);
   }
 
+  /// Logs a call the salesperson will place from their own phone; returns the number to dial.
+  Future<DeviceCallStart> startDevice({String? leadId, String? phoneNumber}) async {
+    final data = await _api.post<Map<String, dynamic>>(
+      '/calls/device',
+      body: compact({'lead_id': leadId, 'phone_number': phoneNumber}),
+    );
+    return DeviceCallStart.fromJson(data);
+  }
+
+  /// Reports how a phone call went (once per call).
+  Future<HumanCall> deviceResult(String id, {required bool connected, required int durationSeconds}) async =>
+      HumanCall.fromJson(
+        await _api.post<Map<String, dynamic>>(
+          '/calls/$id/device-result',
+          body: {'connected': connected, 'duration_seconds': durationSeconds},
+        ),
+      );
+
   Future<PageResult<HumanCall>> list(CallQuery query, {int page = 1, int pageSize = 20}) async {
     final data = await _api.get<Map<String, dynamic>>(
       '/calls',

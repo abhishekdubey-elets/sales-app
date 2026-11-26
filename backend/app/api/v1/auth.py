@@ -64,6 +64,10 @@ async def login(body: LoginIn, request: Request, db: AsyncSession = Depends(get_
     if not user.is_active:
         raise AppError(403, "account_disabled", "This account has been deactivated")
     _FAILS.pop(key, None)
+    if body.portal == "admin" and user.role_name != "admin":
+        raise AppError(403, "wrong_portal", "This is an employee account. Go back and choose Continue as Employee.")
+    if body.portal == "employee" and user.role_name == "admin":
+        raise AppError(403, "wrong_portal", "This is an admin account. Go back and choose Continue as Admin.")
     user.last_login_at = utcnow()
     pair = await _issue(db, user, request, body.device_name)
     await audit(db, user, "auth.login", "user", user.id, {"device": body.device_name}, request)

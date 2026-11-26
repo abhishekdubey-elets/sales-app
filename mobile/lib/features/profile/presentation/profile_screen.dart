@@ -105,7 +105,7 @@ class ProfileScreen extends ConsumerWidget {
                       ListTile(
                         leading: const Icon(Icons.ring_volume_outlined),
                         title: const Text('Calling number'),
-                        subtitle: Text(user.callingNumber ?? 'Not set — required to place calls'),
+                        subtitle: Text(user.callingNumber ?? 'Not set — only needed for calls through a telephony provider'),
                         trailing: const Icon(Icons.edit_outlined, size: 20),
                         onTap: () => _editField(
                           context,

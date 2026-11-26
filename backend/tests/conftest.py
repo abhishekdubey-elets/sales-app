@@ -76,6 +76,9 @@ class FakeProvider(TelephonyProvider):
 
 @pytest_asyncio.fixture(autouse=True)
 async def db_reset():
+    from app.api.v1 import auth as auth_api
+
+    auth_api._FAILS.clear()  # the brute-force limiter is per-process; don't leak lockouts between tests
     async with engine.begin() as conn:
         await conn.execute(sa.text("DROP VIEW IF EXISTS v_unified_calls"))
         await conn.run_sync(Base.metadata.drop_all)

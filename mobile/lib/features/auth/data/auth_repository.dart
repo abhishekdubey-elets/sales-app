@@ -21,10 +21,12 @@ class AuthRepository {
     };
   }
 
-  Future<TokenPair> login(String email, String password) async {
+  /// [portal] is the sign-in the user chose: `admin` or `employee`. The server refuses a mismatch
+  /// (`wrong_portal`) without creating a session.
+  Future<TokenPair> login(String email, String password, {String? portal}) async {
     final data = await _api.post<Map<String, dynamic>>(
       '/auth/login',
-      body: {'email': email.trim(), 'password': password, 'device_name': _deviceName},
+      body: {'email': email.trim(), 'password': password, 'device_name': _deviceName, 'portal': ?portal},
     );
     final pair = TokenPair.fromJson(data);
     await _api.tokens.save(accessToken: pair.accessToken, refreshToken: pair.refreshToken);

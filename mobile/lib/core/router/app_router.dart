@@ -17,6 +17,7 @@ import '../../features/campaigns/presentation/campaign_detail_screen.dart';
 import '../../features/campaigns/presentation/campaign_wizard_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/dialer/presentation/active_call_screen.dart';
+import '../../features/dialer/presentation/device_call_screen.dart';
 import '../../features/dialer/presentation/dialer_screen.dart';
 import '../../features/followups/presentation/followups_screen.dart';
 import '../../features/leads/presentation/lead_detail_screen.dart';
@@ -146,6 +147,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       // Full-screen routes above the bottom navigation.
       GoRoute(
+        path: '/call/device/:id',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, s) => s.extra is DeviceCallStart
+            ? DeviceCallScreen(start: s.extra! as DeviceCallStart)
+            : const _MissingCallRedirect(),
+      ),
+      GoRoute(
         path: '/call/:id',
         parentNavigatorKey: rootNavigatorKey,
         builder: (_, s) => ActiveCallScreen(
@@ -188,3 +196,28 @@ final routerProvider = Provider<GoRouter>((ref) {
   });
   return router;
 });
+
+/// Shown if a phone-call screen is opened without its call data (e.g. after the app was restarted).
+class _MissingCallRedirect extends StatelessWidget {
+  const _MissingCallRedirect();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Phone call')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('This call can no longer be logged from here.', textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: () => context.go('/dialer'), child: const Text('Back to dialer')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

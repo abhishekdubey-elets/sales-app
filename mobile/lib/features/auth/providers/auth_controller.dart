@@ -65,8 +65,8 @@ class AuthController extends Notifier<AuthState> {
   }
 
   /// Throws [ApiException] on failure so the form can show it.
-  Future<void> login(String email, String password) async {
-    final pair = await _repo.login(email, password);
+  Future<void> login(String email, String password, {String? portal}) async {
+    final pair = await _repo.login(email, password, portal: portal);
     state = AuthState.authenticated(pair.user);
     unawaited(ref.read(pushServiceProvider).register());
   }
