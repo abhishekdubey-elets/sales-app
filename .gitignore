@@ -28,3 +28,4 @@ mobile/android/.kotlin/
 mobile/android/build/
 mobile/android/app/.cxx/
 dist/
+backend/data/

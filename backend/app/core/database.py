@@ -37,19 +37,32 @@ class Timestamps:
     )
 
 
+def _is_sqlite_memory(url: str) -> bool:
+    return url.startswith("sqlite") and (url.rstrip("/").endswith(":") or ":memory:" in url)
+
+
 def _make_engine(url: str):
+    """PostgreSQL in production. SQLite is supported for tests (in memory) and single-machine demos (a file:
+    `sqlite+aiosqlite:///./data/elets.db`), e.g. when Docker/PostgreSQL isn't available."""
     kwargs: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
-        from sqlalchemy.pool import StaticPool
+        kwargs = {"connect_args": {"check_same_thread": False, "timeout": 30}}
+        if _is_sqlite_memory(url):
+            from sqlalchemy.pool import StaticPool
 
-        kwargs = {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool}
+            kwargs["poolclass"] = StaticPool  # one shared connection, or each would get its own empty DB
     eng = create_async_engine(url, **kwargs)
     if url.startswith("sqlite"):
+        file_db = not _is_sqlite_memory(url)
 
         @event.listens_for(eng.sync_engine, "connect")
-        def _fk_on(dbapi_conn, _):  # pragma: no cover - sqlite only
+        def _sqlite_pragmas(dbapi_conn, _):  # pragma: no cover - sqlite only
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA foreign_keys=ON")
+            if file_db:
+                # WAL lets the API and background workers read while another connection writes.
+                cur.execute("PRAGMA journal_mode=WAL")
+                cur.execute("PRAGMA busy_timeout=30000")
             cur.close()
 
     return eng

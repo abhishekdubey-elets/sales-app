@@ -91,8 +91,10 @@ def upgrade() -> None:
     op.create_index(op.f('ix_users_role_id'), 'users', ['role_id'], unique=False)
     op.create_index(op.f('ix_users_team_id'), 'users', ['team_id'], unique=False)
     # users ⇄ teams is circular: add the manager FK once both tables exist.
-    op.create_foreign_key(op.f('fk_teams_manager_id_users'), 'teams', 'users', ['manager_id'], ['id'],
-                          ondelete='SET NULL')
+    # (SQLite can't add a constraint to an existing table; the column still works there, just unenforced.)
+    if op.get_bind().dialect.name != 'sqlite':
+        op.create_foreign_key(op.f('fk_teams_manager_id_users'), 'teams', 'users', ['manager_id'], ['id'],
+                              ondelete='SET NULL')
     op.create_table('ai_agents',
     sa.Column('name', sa.String(length=160), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
@@ -516,7 +518,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(op.f('fk_teams_manager_id_users'), 'teams', type_='foreignkey')
+    if op.get_bind().dialect.name != 'sqlite':
+        op.drop_constraint(op.f('fk_teams_manager_id_users'), 'teams', type_='foreignkey')
     op.drop_index(op.f('ix_followups_lead_id'), table_name='followups')
     op.drop_index('ix_followups_assignee_due', table_name='followups')
     op.drop_table('followups')

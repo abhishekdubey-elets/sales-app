@@ -8,3 +8,7 @@ __pycache__/
 tests/
 *.json.key
 service-account*.json
+data/
+*.db
+*.db-wal
+*.db-shm

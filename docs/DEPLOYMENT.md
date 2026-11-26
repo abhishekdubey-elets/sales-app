@@ -35,6 +35,24 @@ seven days of call history tagged `provider = demo-seed` so dashboards are popul
 
 Tests: `cd backend && python -m pytest` (SQLite in memory, fake telephony provider — no network).
 
+### Without Docker (SQLite, single machine)
+
+For a demo or a laptop without Docker/PostgreSQL, the backend can use a SQLite file. Use PostgreSQL for
+anything shared or production.
+
+```bash
+cd backend
+# in .env:  DATABASE_URL=sqlite+aiosqlite:///./data/elets.db
+mkdir -p data
+alembic upgrade head
+python -m app.seed --demo-activity
+uvicorn app.main:app --host 0.0.0.0 --port 8010
+```
+
+`--host 0.0.0.0` makes the API reachable from phones on the same network (`http://<this PC's IP>:8010`).
+On Windows, allow the port through the firewall once (admin PowerShell):
+`New-NetFirewallRule -DisplayName "Elets SalesCall API (8010)" -Direction Inbound -Protocol TCP -LocalPort 8010 -Action Allow -Profile Private`
+
 ### Flutter app
 
 ```bash
