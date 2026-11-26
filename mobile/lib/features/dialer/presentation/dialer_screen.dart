@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,19 +57,20 @@ class _DialerScreenState extends ConsumerState<DialerScreen> with SingleTickerPr
           ],
         ),
       ),
-      body: TabBarView(controller: _tabs, children: const [_KeypadTab(), _RecentsTab(), _FavouritesTab()]),
+      body: TabBarView(controller: _tabs, children: const [KeypadTab(), _RecentsTab(), _FavouritesTab()]),
     );
   }
 }
 
-class _KeypadTab extends ConsumerStatefulWidget {
-  const _KeypadTab();
+/// Keypad tab of the dialer: lead search, number, keypad and call button, sized to fit the screen.
+class KeypadTab extends ConsumerStatefulWidget {
+  const KeypadTab({super.key});
 
   @override
-  ConsumerState<_KeypadTab> createState() => _KeypadTabState();
+  ConsumerState<KeypadTab> createState() => _KeypadTabState();
 }
 
-class _KeypadTabState extends ConsumerState<_KeypadTab> with AutomaticKeepAliveClientMixin {
+class _KeypadTabState extends ConsumerState<KeypadTab> with AutomaticKeepAliveClientMixin {
   final _number = TextEditingController();
   final _search = TextEditingController();
   Timer? _lookupTimer;
@@ -154,7 +156,17 @@ class _KeypadTabState extends ConsumerState<_KeypadTab> with AutomaticKeepAliveC
       launchCall(context, ref, leadId: matched.id, displayName: matched.fullName);
     } else if (_digits.isNotEmpty) {
       launchCall(context, ref, phoneNumber: _digits, displayName: _digits);
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Enter a number, or search for a lead to call.')));
     }
+  }
+
+  void _clearSearch() {
+    _search.clear();
+    _onSearchChanged('');
+    FocusScope.of(context).unfocus();
   }
 
   @override
@@ -162,140 +174,156 @@ class _KeypadTabState extends ConsumerState<_KeypadTab> with AutomaticKeepAliveC
     super.build(context);
     final theme = Theme.of(context);
     final searchActive = _search.text.trim().length >= 2;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: TextField(
+                controller: _search,
+                onChanged: _onSearchChanged,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search leads by name or company',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searching
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : (_search.text.isEmpty
+                            ? null
+                            : IconButton(tooltip: 'Clear search', icon: const Icon(Icons.clear), onPressed: _clearSearch)),
+                ),
+              ),
+            ),
+            Expanded(
+              // While searching, results take the keypad's place (the system keyboard is up anyway).
+              child: searchActive ? _searchResults() : _dialPad(theme),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _searchResults() {
+    if (_results.isEmpty) {
+      return _searching
+          ? const Center(child: CircularProgressIndicator())
+          : const EmptyState(icon: Icons.person_search_outlined, title: 'No matching leads');
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 16),
+      itemCount: _results.length,
+      separatorBuilder: (_, _) => const Divider(indent: 72, height: 1),
+      itemBuilder: (context, i) {
+        final lead = _results[i];
+        return ListTile(
+          leading: AppAvatar(name: lead.fullName, radius: 18),
+          title: Text(lead.fullName),
+          subtitle: Text([lead.companyName ?? '', lead.displayPhone].where((s) => s.isNotEmpty).join(' · ')),
+          trailing: IconButton.filled(
+            tooltip: 'Call ${lead.fullName}',
+            style: IconButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white),
+            icon: const Icon(Icons.call),
+            onPressed: lead.optedOut
+                ? null
+                : () => launchCall(context, ref, leadId: lead.id, displayName: lead.fullName),
+          ),
+          onTap: () => context.go('/leads/${lead.id}'),
+        );
+      },
+    );
+  }
+
+  Widget _dialPad(ThemeData theme) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Size the keys from the space actually available so the number, keypad and call button all fit
+        // on screen without scrolling. Only very short screens (landscape, huge system font) scroll.
+        final short = constraints.maxHeight < 420;
+        final numberH = short ? 44.0 : 56.0;
+        final statusH = short ? 20.0 : 24.0;
+        const verticalPadding = 8.0;
+        final rowH = (constraints.maxHeight - numberH - statusH - verticalPadding) / 5;
+        final rowGap = (rowH * 0.14).clamp(4.0, 10.0).toDouble();
+        final byWidth = (constraints.maxWidth - 32) / 3 - 16;
+        final keySize = math.min(rowH - rowGap, byWidth).clamp(40.0, 76.0).toDouble();
+        final hasNumber = _digits.isNotEmpty || _matched != null;
+        final callButton = FloatingActionButton(
+          heroTag: 'dial',
+          tooltip: 'Call',
+          backgroundColor: AppColors.success,
+          foregroundColor: Colors.white,
+          elevation: hasNumber ? 3 : 0,
+          shape: const CircleBorder(),
+          onPressed: _call,
+          child: Icon(Icons.call, size: keySize * 0.42),
+        );
         return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _search,
-                        onChanged: _onSearchChanged,
-                        decoration: InputDecoration(
-                          hintText: 'Search leads by name or company',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searching
-                              ? const Padding(
-                                  padding: EdgeInsets.all(14),
-                                  child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                )
-                              : (_search.text.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () {
-                                          _search.clear();
-                                          _onSearchChanged('');
-                                        },
-                                      )),
-                        ),
-                      ),
-                      if (searchActive)
-                        Card(
-                          margin: const EdgeInsets.only(top: 8),
-                          child: _results.isEmpty && !_searching
-                              ? const Padding(padding: EdgeInsets.all(16), child: Text('No matching leads'))
-                              : Column(
-                                  children: [
-                                    for (final lead in _results)
-                                      ListTile(
-                                        leading: AppAvatar(name: lead.fullName, radius: 18),
-                                        title: Text(lead.fullName),
-                                        subtitle: Text(
-                                          [
-                                            lead.companyName ?? '',
-                                            lead.displayPhone,
-                                          ].where((s) => s.isNotEmpty).join(' · '),
-                                        ),
-                                        trailing: IconButton(
-                                          icon: const Icon(Icons.call, color: AppColors.success),
-                                          onPressed: lead.optedOut
-                                              ? null
-                                              : () => launchCall(
-                                                  context,
-                                                  ref,
-                                                  leadId: lead.id,
-                                                  displayName: lead.fullName,
-                                                ),
-                                        ),
-                                        onTap: () => context.go('/leads/${lead.id}'),
-                                      ),
-                                  ],
-                                ),
-                        ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        key: const ValueKey('dialer-number'),
-                        controller: _number,
-                        onChanged: (_) => _onNumberChanged(),
-                        keyboardType: TextInputType.phone,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineMedium?.copyWith(letterSpacing: 1.5),
-                        decoration: const InputDecoration(
-                          hintText: 'Enter number',
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          filled: false,
-                        ),
-                      ),
-                      SizedBox(
-                        height: 28,
-                        child: _lookingUp
-                            ? const Center(
-                                child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              )
-                            : _matched != null
-                            ? InkWell(
-                                onTap: () => context.go('/leads/${_matched!.id}'),
-                                child: Text(
-                                  '${_matched!.fullName}${_matched!.companyName != null ? ' · ${_matched!.companyName}' : ''}',
-                                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary),
-                                ),
-                              )
-                            : (_digits.length >= 10
-                                  ? Text(
-                                      'Not in your leads',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                    )
-                                  : null),
-                      ),
-                      const SizedBox(height: 8),
-                      DialerKeypad(onKey: _press, onBackspace: _backspace, onClear: _clear),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: 72,
-                        height: 72,
-                        child: FloatingActionButton(
-                          heroTag: 'dial',
-                          tooltip: 'Call',
-                          backgroundColor: AppColors.success,
-                          foregroundColor: Colors.white,
-                          shape: const CircleBorder(),
-                          onPressed: _digits.isEmpty && _matched == null ? null : _call,
-                          child: const Icon(Icons.call, size: 32),
-                        ),
-                      ),
-                    ],
+            // Centre vertically when the keys hit their maximum size on tall screens.
+            constraints: BoxConstraints(minHeight: math.max(0.0, constraints.maxHeight - verticalPadding)),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+              SizedBox(
+                height: numberH,
+                child: TextField(
+                  key: const ValueKey('dialer-number'),
+                  controller: _number,
+                  onChanged: (_) => _onNumberChanged(),
+                  // The on-screen keypad is the input: don't let Android's keyboard cover it.
+                  // Long-press still offers paste.
+                  keyboardType: TextInputType.none,
+                  showCursor: true,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineSmall?.copyWith(letterSpacing: 1.5),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter number',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
                   ),
                 ),
               ),
+              SizedBox(
+                height: statusH,
+                child: _lookingUp
+                    ? const Center(
+                        child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : _matched != null
+                    ? InkWell(
+                        onTap: () => context.go('/leads/${_matched!.id}'),
+                        child: Text(
+                          '${_matched!.fullName}${_matched!.companyName != null ? ' · ${_matched!.companyName}' : ''}',
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary),
+                        ),
+                      )
+                    : (_digits.length >= 10
+                          ? Text(
+                              'Not in your leads',
+                              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                            )
+                          : null),
+              ),
+              DialerKeypad(
+                onKey: _press,
+                onBackspace: _backspace,
+                onClear: _clear,
+                keySize: keySize,
+                rowGap: rowGap,
+                callButton: callButton,
+              ),
+            ],
             ),
           ),
         );
