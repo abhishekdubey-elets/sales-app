@@ -38,9 +38,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # Pinned so a new Flutter release can't change Gradle/AGP requirements under us. Bump deliberately.
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.50.1
           cache: true
 
       - name: Flutter version
