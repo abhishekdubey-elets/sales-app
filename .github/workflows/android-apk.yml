@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - uses: subosito/flutter-action@v2
         with:
@@ -64,7 +64,15 @@ jobs:
         run: flutter test
 
       - name: Build APK
-        run: flutter build apk --release --dart-define=API_BASE_URL="$API_BASE_URL"
+        run: |
+          if ! flutter build apk --release --dart-define=API_BASE_URL="$API_BASE_URL" > build.txt 2>&1; then
+            cat build.txt
+            # Surface the cause (Gradle's "What went wrong" block, Dart/Kotlin errors) as annotations.
+            { grep -A6 "What went wrong" build.txt; grep -E "^e: |Error: |error:|FAILURE:" build.txt; } \
+              | grep -v '^--$' | head -n 25 | while IFS= read -r line; do echo "::error title=build::$line"; done
+            exit 1
+          fi
+          tail -n 5 build.txt
 
       - name: Rename APK
         run: cp build/app/outputs/flutter-apk/app-release.apk build/elets-salescall-ai.apk
